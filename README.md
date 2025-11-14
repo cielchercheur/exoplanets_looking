@@ -25,12 +25,19 @@ python sorting_toi.py --toi_csv tois.csv --start 2025-11-17 --end 2025-11-30
 
 ## Parameters
 TEFF_MIN, TEFF_MAX = 2400, 4000        # K
+
 LOGG_MIN = 4.3
+
 RSTAR_MAX = 0.7                        # R_sun
+
 TESS_DISP_OK = {"PC"}
+
 TESS_MAG_MAX = 14.0
+
 DEPTH_PPM_MIN = 2000.0
+
 PERIOD_MAX_D = 15.0
+
 DUR_MIN_H, DUR_MAX_H = 0.5, 5.0
 
 COMMENT_FLAGS = [
