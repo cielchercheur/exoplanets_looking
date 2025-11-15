@@ -6,8 +6,9 @@ and assigns each remaining target a priority score for follow‑up transit obser
 
 The result is a ranked list of promising M‑dwarf planet candidates.
 
-Run (Dates to be fixed, not used now):
-python sorting_toi.py --toi_csv tois.csv --start 2025-11-17 --end 2025-11-30
+Run:
+
+python sorting_toi.py --toi_csv tois.csv
 
 
 ## Features
