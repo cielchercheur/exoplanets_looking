@@ -7,13 +7,12 @@ and assigns each remaining target a priority score for follow‑up transit obser
 The result is a ranked list of promising M‑dwarf planet candidates.
 
 Run:
-
+```
 python sorting_toi.py --toi_csv tois.csv
-
+```
 
 ## Features
 
-- Normalizes typical ExoFOP TOI column names.
 - Applies physical and observational cuts:
   - Stellar effective temperature, surface gravity, radius.
   - TESS magnitude, transit depth, period, and duration.
