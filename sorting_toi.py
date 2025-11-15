@@ -56,7 +56,7 @@ def duration_tri(h: float) -> float:
 def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
     m_teff_score = (TEFF_MAX - df['Stellar Eff Temp (K)']) / (TEFF_MAX - 2600)
     m_rad_score  = (RSTAR_MAX - df['Stellar Radius (R_Sun)']) / (RSTAR_MAX - 0.1)
-    score_m = 0.6*m_teff_score.map(clamp01) + 0.4*m_rad_score.map(clamp01)
+    score_m = 0.6 * m_teff_score.map(clamp01) + 0.4 * m_rad_score.map(clamp01)
 
     tbright_score = 1 - (df['TESS Mag'] - 12) / (15 - 12)
     depth_score   = (df['Depth (ppm)'] - DEPTH_PPM_MIN) / (7000 - DEPTH_PPM_MIN)
@@ -75,7 +75,8 @@ def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--toi_csv", required=True, help="Path to full TOI CSV (ExoFOP-style).")
+    p.add_argument("--toi_csv", required=True,
+                   help="Path to full TOI CSV (ExoFOP-style).")
 
     # Fixed because of location and conditions [NOT USED]
     #p.add_argument("--site_lat", type=float, default=31.043416667, help="Observer latitude (deg).")
