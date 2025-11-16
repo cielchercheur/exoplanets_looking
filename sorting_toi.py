@@ -2,75 +2,115 @@
 # Run:
 # python sorting_toi.py --toi_csv tois.csv
 
-import argparse
+import re
+import numpy as np
 import pandas as pd
-
+import argparse
 
 # Defaults
-TEFF_MIN, TEFF_MAX = 2400, 4000        # K
-LOGG_MIN = 4.3
-RSTAR_MAX = 0.7                        # R_sun
-TESS_DISP_OK = {"PC"}
-TESS_MAG_MAX = 14.0
-DEPTH_PPM_MIN = 2000.0
-PERIOD_MAX_D = 15.0
-DUR_MIN_H, DUR_MAX_H = 0.5, 5.0
+TEFF_MIN, TEFF_MAX       = 2400.0, 4000.0   # K
+LOGG_MIN                 = 4.3
+RSTAR_MIN, RSTAR_MAX     = 0.1, 0.7         # R_sun
+
+TESS_DISP_OK             = {"PC"}
+TESS_MAG_CUTOFF          = 14.0
+
+# Brightness reference range used for normalization
+TBRIGHT_MIN_REF, TBRIGHT_MAX_REF = 12.0, 15.0
+
+DEPTH_PPM_MIN, DEPTH_PPM_MAX = 2000.0, 7000.0
+PERIOD_PIVOT_D, PERIOD_MAX_D = 5.0, 15.0
+
+DUR_MIN_H, DUR_PEAK_H, DUR_MAX_H = 0.5, 2.0, 5.0
 
 COMMENT_FLAGS = [
-    'v-shaped','v shaped','eb','eclips','odd-even','sb2','binary','fp','false',
-    'retired','low snr','contamin','centroid offset'
+    'v-shaped','v shaped','eb','eclips','odd-even','sb2','binary',
+    'fp','false positive','retired','low snr','contamin','centroid offset'
 ]
 
-def flagged_comment(txt: str) -> bool:
-    if pd.isna(txt): return False
-    s = str(txt).lower()
-    return any(flag in s for flag in COMMENT_FLAGS)
+#COMMENT_FLAGS = []
 
+# Regex: case-insensitive; handle v-shaped/v shaped; add word boundaries for key phrases
+FLAGS_PATTERN = re.compile(
+    r'(?:v[ -]?shaped|\beb\b|eclips|odd-even|\bsb2\b|\bbinary\b|fp|false positive|\blow snr\b|contamin|centroid offset)',
+    flags=re.IGNORECASE
+)
+
+NUM_COLS = [
+    'Stellar Eff Temp (K)', 'Stellar log(g) (cm/s^2)', 'Stellar Radius (R_Sun)',
+    'TESS Mag', 'Depth (ppm)', 'Period (days)', 'Duration (hours)'
+]
 
 def filter_candidates(df: pd.DataFrame) -> pd.DataFrame:
+    # Coerce numeric columns
+    df = df.copy()
+    for col in NUM_COLS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # Vectorized comment flag
+    comments = df.get('Comments', pd.Series(index=df.index, dtype=object))
+    flagged = comments.fillna('').str.contains(FLAGS_PATTERN, na=False)
+
     gate = (
         df['TESS Disposition'].isin(TESS_DISP_OK) &
         df['Stellar Eff Temp (K)'].between(TEFF_MIN, TEFF_MAX, inclusive='both') &
         (df['Stellar log(g) (cm/s^2)'] >= LOGG_MIN) &
         (df['Stellar Radius (R_Sun)'] <= RSTAR_MAX) &
-        (df['TESS Mag'] <= TESS_MAG_MAX) &
+        (df['TESS Mag'] <= TESS_MAG_CUTOFF) &
         (df['Depth (ppm)'] >= DEPTH_PPM_MIN) &
         (df['Period (days)'] <= PERIOD_MAX_D) &
-        (df['Duration (hours)'].between(DUR_MIN_H, DUR_MAX_H, inclusive='both')) &
-        (~df['Comments'].apply(flagged_comment))
+        df['Duration (hours)'].between(DUR_MIN_H, DUR_MAX_H, inclusive='both') &
+        (~flagged)
     )
     return df[gate].copy()
 
-
-def clamp01(x: float) -> float:
-    return float(max(0.0, min(1.0, x))) if not pd.isna(x) else 0.0
-
-
-def duration_tri(h: float) -> float:
-    if pd.isna(h): return 0.0
-    if h <= DUR_MIN_H or h >= DUR_MAX_H: return 0.0
-    if h <= 2.0: return (h - DUR_MIN_H) / (2.0 - DUR_MIN_H)
-    return 1.0 - (h - 2.0) / (DUR_MAX_H - 2.0)
-
-
 def rank_candidates(df: pd.DataFrame) -> pd.DataFrame:
-    m_teff_score = (TEFF_MAX - df['Stellar Eff Temp (K)']) / (TEFF_MAX - 2600)
-    m_rad_score  = (RSTAR_MAX - df['Stellar Radius (R_Sun)']) / (RSTAR_MAX - 0.1)
-    score_m = 0.6 * m_teff_score.map(clamp01) + 0.4 * m_rad_score.map(clamp01)
+    df = df.copy()
 
-    tbright_score = 1 - (df['TESS Mag'] - 12) / (15 - 12)
-    depth_score   = (df['Depth (ppm)'] - DEPTH_PPM_MIN) / (7000 - DEPTH_PPM_MIN)
-    period_score  = 1 - (df['Period (days)'] - 5) / (PERIOD_MAX_D - 5)
+    # Convenience aliases
+    teff   = df['Stellar Eff Temp (K)']
+    rstar  = df['Stellar Radius (R_Sun)']
+    tmag   = df['TESS Mag']
+    depth  = df['Depth (ppm)']
+    period = df['Period (days)']
+    dur    = df['Duration (hours)']
 
-    score_obs = (0.40 * tbright_score.map(clamp01) +
-                 0.40 * depth_score.map(clamp01) +
-                 0.15 * period_score.map(clamp01) +
-                 0.05 * df['Duration (hours)'].map(duration_tri))
+    # Stellar merit (cooler, smaller better)
+    m_teff = (TEFF_MAX - teff) / max(1e-9, (TEFF_MAX - TEFF_MIN))
+    m_rad  = (RSTAR_MAX - rstar) / max(1e-9, (RSTAR_MAX - RSTAR_MIN))
+    m_teff = m_teff.clip(0, 1).fillna(0.0)
+    m_rad  = m_rad.clip(0, 1).fillna(0.0)
+    score_m = 0.6 * m_teff + 0.4 * m_rad
 
-    df['score_m'] = score_m
-    df['score_obs'] = score_obs
+    # Observability (brighter, deeper, shorter period, ~2 h duration)
+    tbright = 1.0 - (tmag - TBRIGHT_MIN_REF) / max(1e-9, (TBRIGHT_MAX_REF - TBRIGHT_MIN_REF))
+    tbright = tbright.clip(0, 1).fillna(0.0)
+
+    depth_s = (depth - DEPTH_PPM_MIN) / max(1e-9, (DEPTH_PPM_MAX - DEPTH_PPM_MIN))
+    depth_s = depth_s.clip(0, 1).fillna(0.0)
+
+    period_s = 1.0 - (period - PERIOD_PIVOT_D) / max(1e-9, (PERIOD_MAX_D - PERIOD_PIVOT_D))
+    period_s = period_s.clip(0, 1).fillna(0.0)
+
+    # Vectorized triangular duration
+    tri = np.zeros(len(df), dtype=float)
+    mask = dur.notna() & (dur > DUR_MIN_H) & (dur < DUR_MAX_H)
+    left = mask & (dur <= DUR_PEAK_H)
+    right = mask & (dur > DUR_PEAK_H)
+    tri[left]  = (dur[left]  - DUR_MIN_H) / max(1e-9, (DUR_PEAK_H - DUR_MIN_H))
+    tri[right] = 1.0 - (dur[right] - DUR_PEAK_H) / max(1e-9, (DUR_MAX_H - DUR_PEAK_H))
+
+    score_obs = (0.40 * tbright +
+                 0.40 * depth_s +
+                 0.15 * period_s +
+                 0.05 * tri)
+
+    df['score_m']        = score_m
+    df['score_obs']      = score_obs
     df['priority_score'] = 0.5 * score_m + 0.5 * score_obs
     return df
+
 
 
 def main():
@@ -98,7 +138,6 @@ def main():
     cands = rank_candidates(cands)
     cands = cands.sort_values('priority_score', ascending=False).reset_index(drop=True)
 
-    # Date Modified is now preserved in the output CSV
     cands.to_csv("m_dwarf_candidates_ranked.csv", index=False)
 
     print(f"Filtered + ranked candidates: {len(cands)}")

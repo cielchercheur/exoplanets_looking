@@ -24,21 +24,25 @@ python sorting_toi.py --toi_csv tois.csv
 - Writes the ranked subset to CSV and prints a compact summary.
 
 ## Parameters
-TEFF_MIN, TEFF_MAX = 2400, 4000        # K
+```python
+TEFF_MIN, TEFF_MAX      = 2400.0, 4000.0        # K
 
-LOGG_MIN = 4.3
+LOGG_MIN                = 4.3
 
-RSTAR_MAX = 0.7                        # R_sun
+RSTAR_MIN, RSTAR_MAX    = 0.1, 0.7              # R_sun
 
-TESS_DISP_OK = {"PC"}
+TESS_DISP_OK            = {"PC"}
 
-TESS_MAG_MAX = 14.0
+TESS_MAG_CUTOFF         = 14.0
 
-DEPTH_PPM_MIN = 2000.0
+DEPTH_PPM_MIN, DEPTH_PPM_MAX = 2000.0, 7000.0
 
-PERIOD_MAX_D = 15.0
+PERIOD_PIVOT_D, PERIOD_MAX_D = 5.0, 15.0
 
-DUR_MIN_H, DUR_MAX_H = 0.5, 5.0
+DUR_MIN_H, DUR_PEAK_H, DUR_MAX_H = 0.5, 2.0, 5.0
+
+# Brightness reference range used for normalization
+TBRIGHT_MIN_REF, TBRIGHT_MAX_REF = 12.0, 15.0
 
 COMMENT_FLAGS = [
     'v-shaped','v shaped','eb','eclips','odd-even','sb2','binary','fp','false',
